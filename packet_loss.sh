@@ -178,7 +178,10 @@ trap '
 ' INT
 
 
-# Main loop
+#
+#  Main loop
+#
+
 iterations=0
 
 # Initialize packet loss counters for each interface
@@ -193,6 +196,10 @@ for interface in $interfaces; do
 done
 
 while true; do
+#
+#  This will run $ping_count pings to $host and then report packet loss.
+#  This will be repated until Ctrl-C
+#
     iterations=$((iterations + 1))
     output=""
     pids=()
