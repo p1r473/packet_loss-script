@@ -53,7 +53,7 @@ host=1.1.1.1
 
 # Interfaces to test connectivity
 # Add multiple interfaces separated by spaces (e.g., "eth0 eth0.52 eth0.55")
-interfaces="eth0"
+interfaces="eth0 eth0.52 eth0.55 eth0.56"
 
 
 #==========================================
@@ -188,6 +188,10 @@ for interface in $interfaces; do
 done
 
 while true; do
+    #
+    #  This will run $ping_count pings to $host and then report packet loss.
+    #  This will be repated until Ctrl-C
+    #
     iterations=$((iterations + 1))
     output=""
     pids=()
@@ -212,7 +216,7 @@ while true; do
         this_time_packet_loss=$(echo "$ping_output" | awk '{print $1-$4}')
         this_time_percent_loss=$(echo "$ping_output" | awk -v a="$packet_loss_param_no" '{print $a}')
 
-        # Track the packet loss for each interface separately
+        # Track the packet loss for each interface
         ack_loss[$interface]=$((ack_loss[$interface] + this_time_packet_loss))
 
         # Avoid division by zero
@@ -222,11 +226,12 @@ while true; do
             avg_loss=0
         fi
 
-        # Append the results for the current interface to the output string
-        output+=$(printf "%-8s %6s avg:%3.0f%% %s " "$interface" "$this_time_percent_loss" "$avg_loss" "$ping_count")
+        # Append the results for the current interface to the output string, including dropped packets
+        output+=$(printf "%-8s %6s avg:%3.0f%% dropped:%d %s " "$interface" "$this_time_percent_loss" "$avg_loss" "$this_time_packet_loss" "$ping_count")
         output+=$(date +%H:%M:%S)
         output+="\n"
     done
+
     # Print the consolidated output for all interfaces
     echo -e "$output"
 done
