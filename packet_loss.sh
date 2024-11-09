@@ -183,15 +183,16 @@ iterations=0
 
 # Initialize packet loss counters for each interface
 declare -A ack_loss
+declare -A total_dropped_packets
+declare -A previous_output
+
 for interface in $interfaces; do
     ack_loss[$interface]=0
+    total_dropped_packets[$interface]=0
+    previous_output[$interface]=""
 done
 
 while true; do
-    #
-    #  This will run $ping_count pings to $host and then report packet loss.
-    #  This will be repated until Ctrl-C
-    #
     iterations=$((iterations + 1))
     output=""
     pids=()
@@ -216,8 +217,8 @@ while true; do
         this_time_packet_loss=$(echo "$ping_output" | awk '{print $1-$4}')
         this_time_percent_loss=$(echo "$ping_output" | awk -v a="$packet_loss_param_no" '{print $a}')
 
-        # Track the packet loss for each interface
-        ack_loss[$interface]=$((ack_loss[$interface] + this_time_packet_loss))
+        # Track total dropped packets for each interface
+        total_dropped_packets[$interface]=$((total_dropped_packets[$interface] + this_time_packet_loss))
 
         # Avoid division by zero
         if [ $iterations -gt 0 ]; then
@@ -226,12 +227,21 @@ while true; do
             avg_loss=0
         fi
 
-        # Append the results for the current interface to the output string, including dropped packets
-        output+=$(printf "%-8s %6s avg:%3.0f%% dropped:%d %s " "$interface" "$this_time_percent_loss" "$avg_loss" "$this_time_packet_loss" "$ping_count")
-        output+=$(date +%H:%M:%S)
-        output+="\n"
+        # Prepare current output for this interface with proper newline formatting
+        current_output=$(printf "%-10s %4s avg:%3.0f%% dropped:%d total_dropped:%d %s\n" \
+                 "$interface" "$this_time_percent_loss" "$avg_loss" "$this_time_packet_loss" \
+                 "${total_dropped_packets[$interface]}" "$(date +%H:%M:%S)")
+
+        # Only print if the output has changed for this interface
+        if [ "$current_output" != "${previous_output[$interface]}" ]; then
+            output+="${current_output}\n"
+            previous_output[$interface]=$current_output
+        fi    
     done
 
-    # Print the consolidated output for all interfaces
-    echo -e "$output"
+        # Print consolidated output if there's any change
+        if [ -n "$output" ]; then
+            echo -e "$output"
+            echo   # add an extra blank line between updates for readability
+        fi
 done
