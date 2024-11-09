@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 __version="1.6.0 2021-12-18"
 #
 # Copyright (c) 2020,2021: Jacob.Lundqvist@gmail.com
@@ -49,7 +49,11 @@ ping_count=60
 #
 # what to ping (can be overriden by param2)
 #
-host=8.8.4.4
+host=1.1.1.1
+
+# Interfaces to test connectivity
+# Add multiple interfaces separated by spaces (e.g., "eth0 eth0.52 eth0.55")
+interfaces="eth0"
 
 
 #==========================================
@@ -174,26 +178,55 @@ trap '
 ' INT
 
 
-#
-#  Main loop
-#
+# Main loop
 iterations=0
-while true; do
-    #
-    #  This will run $ping_count pings to $host and then report packet loss.
-    #  This will be repated until Ctrl-C
-    #
-    output="$($ping_cmd  | grep loss)"
-    iterations=$(( iterations + 1 ))
-    this_time_packet_loss=$(echo "$output" | awk '{print $1-$4}')
-    this_time_percent_loss=$(echo "$output" | awk -v a="$packet_loss_param_no" '{print $a}' )
-    ack_loss=$((ack_loss + this_time_packet_loss))
-    avg_loss=$(
-        awk -v ack_loss=$ack_loss -v count=$iterations \
-            -v ping_count=$ping_count \
-            'BEGIN { print 100 * (ack_loss/(count * ping_count)) }' )
 
-    printf "%6s avg:%3.0f%% %s " "$this_time_percent_loss" "$avg_loss" \
-           "$ping_count"
-    date +%H:%M:%S
+# Initialize packet loss counters for each interface
+declare -A ack_loss
+for interface in $interfaces; do
+    ack_loss[$interface]=0
+done
+
+while true; do
+    iterations=$((iterations + 1))
+    output=""
+    pids=()
+
+    for interface in $interfaces; do
+        # Set the ping command for the current interface
+        ping_cmd="ping -I $interface -c $ping_count $host"
+
+        # Run the ping command in the background and store the process ID
+        $ping_cmd > /tmp/ping_${interface}.log &
+        pids+=($!)
+    done
+
+    # Wait for all pings to complete
+    for pid in "${pids[@]}"; do
+        wait $pid
+    done
+
+    # Process the output for each interface
+    for interface in $interfaces; do
+        ping_output=$(grep loss /tmp/ping_${interface}.log)
+        this_time_packet_loss=$(echo "$ping_output" | awk '{print $1-$4}')
+        this_time_percent_loss=$(echo "$ping_output" | awk -v a="$packet_loss_param_no" '{print $a}')
+
+        # Track the packet loss for each interface separately
+        ack_loss[$interface]=$((ack_loss[$interface] + this_time_packet_loss))
+
+        # Avoid division by zero
+        if [ $iterations -gt 0 ]; then
+            avg_loss=$(awk -v ack_loss="${ack_loss[$interface]}" -v count=$iterations -v ping_count=$ping_count 'BEGIN { print 100 * (ack_loss/(count * ping_count)) }')
+        else
+            avg_loss=0
+        fi
+
+        # Append the results for the current interface to the output string
+        output+=$(printf "%-8s %6s avg:%3.0f%% %s " "$interface" "$this_time_percent_loss" "$avg_loss" "$ping_count")
+        output+=$(date +%H:%M:%S)
+        output+="\n"
+    done
+    # Print the consolidated output for all interfaces
+    echo -e "$output"
 done
