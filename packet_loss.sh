@@ -184,16 +184,20 @@ trap '
     # Calculate total average jitter across all interfaces
     total_avg_jitter=0
     jitter_count=0
+    all_nan=true
     for interface in $interfaces; do
         if [ "${avg_jitter[$interface]}" != "NaN" ] && [ ${total_sent_packets[$interface]} -gt 0 ]; then
             total_avg_jitter=$(echo "$total_avg_jitter ${avg_jitter[$interface]}" | awk "{print \$1 + \$2}")
             jitter_count=$((jitter_count + 1))
+            all_nan=false
         fi
     done
     if [ $jitter_count -gt 0 ]; then
         total_avg_jitter=$(echo "$total_avg_jitter $jitter_count" | awk "{printf \"%.2f\", \$1 / \$2}")
-    else
+    elif [ "$all_nan" = true ]; then
         total_avg_jitter="N/A"
+    else
+        total_avg_jitter=0
     fi
 
     echo "  Total Pings: $global_sent_packets, Total Packet Loss: $global_dropped_packets ($total_percentage%)"
@@ -217,7 +221,11 @@ trap '
                 max_time_display="N/A"
             fi
 
-            printf "%-9s %-11s %6d %8d %8.1f%% %11.1f %12s %10s %10s\n" \
+            if [ "${avg_jitter[$interface]}" == "NaN" ]; then
+                avg_jitter[$interface]="N/A"
+            fi
+
+            printf "%-9s %-11s %6d %8d %8.1f%% %11s %12s %10s %10s\n" \
                    "$interface" "$current_host" "${total_sent_packets[$interface]}" "${total_dropped_packets[$interface]}" \
                    "$loss_percentage" "${avg_jitter[$interface]}" "$time_display" "$avg_time_display" "$max_time_display"
         done
